@@ -13,16 +13,21 @@ class VForth
   
   def call
     while input = gets
-      parse_words_string(input)
+      parse(input)
       puts ' ok'
       puts "#{@stack} #{@words}" if @debug
     end
+  end
+
+  def parse(words_str)
+    parse_words_arr(words_str.split)
   end
   
   private
 
   def error(message)
-    raise "error: #{message}"
+    puts "error: #{message}"
+    exit 1
   end
 
   def stack_push(var)
@@ -45,8 +50,8 @@ class VForth
     end
   end
 
-  def stack_peek_top
-    stack_peek -1
+  def stack_peek_top(index = -1)
+    stack_peek index
   end
 
   def parse_number(number)
@@ -141,9 +146,5 @@ class VForth
         
         parse_word(word)
       }
-  end
-
-  def parse_words_string(words_str)
-    parse_words_arr(words_str.split)
   end
 end
