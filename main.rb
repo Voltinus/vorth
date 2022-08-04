@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
 
-require_relative 'vforth'
+require_relative "vorth"
 
-vf = VForth.new.call
+Vorth.new.call

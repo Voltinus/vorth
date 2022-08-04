@@ -1,37 +1,51 @@
 #!/usr/bin/env ruby
 
-class VForth
-  def initialize
+class Vorth
+  def initialize(stdout_print: true, debug: false)
     @stack = []
     @words = {}
     @temp_word = nil
 
     # :normal, :word_name, :word_contents, :string
     @mode = :normal
-    @debug = false
+    @debug = debug
+    @buffer = ""
   end
   
   def call
     while input = gets
       parse(input)
-      puts ' ok'
+      puts " ok"
       puts "#{@stack} #{@words}" if @debug
     end
   end
 
   def parse(words_str)
     parse_words_arr(words_str.split)
+    if @debug
+      if @buffer.empty?
+        "#{@stack} #{@words}"
+      else
+        [@buffer, "#{@stack} #{@words}"].join(" ")
+      end
+    else
+      @buffer
+    end
   end
   
   private
 
-  def error(message)
-    puts "error: #{message}"
-    exit 1
+  def output(value)
+    @buffer += value.to_s
+    print value if @stdout_print
   end
 
-  def stack_push(var)
-    @stack.push var
+  def error(message)
+    raise message
+  end
+
+  def stack_push(*args)
+    @stack.push *args
   end
 
   def stack_pop
@@ -43,11 +57,10 @@ class VForth
   end
 
   def stack_peek(position)
-    if @stack.size > position.abs
-      return @stack[position]
-    else
-      error "stack underflow"
-    end
+    value = @stack[position]
+    return value if value
+    
+    error "stack underflow"
   end
 
   def stack_peek_top(index = -1)
@@ -57,12 +70,16 @@ class VForth
   def parse_number(number)
     number = number.to_s
 
-    if number =~ /^0x/
+    if number =~ /^-?0x/
       number = number.to_i(16)
-    elsif number =~ /^[0-9]/ 
+    elsif number =~ /^-?0o/ 
+      number = number.to_i(8)
+    elsif number =~ /^-?0b/ 
+      number = number.to_i(2)
+    elsif number =~ /^-?[0-9]/ 
       number = number.to_i
     else
-      error "can't find word '#{number}' or parse it as number"
+      error "can't find word \"#{number}\" or parse it as number"
     end
 
     stack_push number
@@ -79,7 +96,7 @@ class VForth
       @words[word] = []
       @mode = :word_contents
     when :word_contents
-      if word == :';'
+      if word == :";"
         @mode = :normal
         @temp_word = nil
       else
@@ -93,42 +110,38 @@ class VForth
           @mode = :normal
         end
       else
-        print "#{word.to_s} "
+        output "#{word.to_s} "
       end
     when :normal
       if @words.keys.include? word
         @words[word].each { |w| parse_word(w) }
       else
         case word
-        when :':'; @mode = :word_name
-        when :'+'; stack_push(stack_pop + stack_pop)
-        when :'-'
+        when :":"; @mode = :word_name
+        when :"+"; stack_push(stack_pop + stack_pop)
+        when :"-"
           a, b = stack_pop, stack_pop
           stack_push(b - a)
-        when :'*'; stack_push(stack_pop * stack_pop)
-        when :'/'
+        when :"*"; stack_push(stack_pop * stack_pop)
+        when :"/"
           a, b = stack_pop, stack_pop
           stack_push (b / a).to_i
-        when :'/mod'
-          a, b = stack_pop, stack_pop
-          stack_push (b % a)
-          stack_push (b / a).to_i
-        when :mod
+        when :"%"
           a, b = stack_pop, stack_pop
           stack_push (b % a)
         when :swap
           a, b = stack_pop, stack_pop
-          stack_push b, a
+          stack_push a, b
         when :dup; stack_push stack_peek_top
         when :over; stack_push stack_peek(-2)
         # TODO: :rot, :drop, :2swap, :2dup, :2over, :2drop
-        when :'.'; print stack_pop
+        when :"."; output stack_pop
         when :cr; puts
-        when :space; print ' '
-        when :spaces; print ' ' * stack_pop
-        when :emit; print stack_pop.chr
+        when :space; output " "
+        when :spaces; output " " * stack_pop
+        when :emit; output stack_pop.chr
         when :'."'; @mode = :string
-        when :'.s'; print @stack
+        when :".s"; output @stack
         else
           parse_number(word)
         end
