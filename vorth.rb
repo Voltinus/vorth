@@ -89,25 +89,29 @@ module Vorth
   class Vorth
     def initialize(stdout_print: true, debug: false)
       @stdout_print = stdout_print
-      @debug = debug
 
       @tokens = []
       @stack = Stack.new
       @words = {}
-      @temp_word = nil
       @vars = {
-        PC: 0,
-        # MODE: 0,
+        PC: 0,    # program counter (index of current instruction in @tokens)
+        EXIT: 0,  # if 1 terminate the execution
+        SKIP: 0,  # if 1 skip next instruction (or whole block)
       }
-      @mode = :normal
+
       @buffer = ""
     end
     
-    def call
-      while input = gets
-        parse(input)
-        puts "ok"
-        puts "#{@stack} #{@words}" if @debug
+    def call(to_parse = nil)
+      if to_parse
+        parse(to_parse)
+      else
+        while @vars[:EXIT] == 0 && (input = gets)
+          parse(input)
+          puts((@buffer.length > 0 ? " ok" : "ok") + (@vars[:EXIT] == 1 ? ", bye!" : ""))
+          @buffer = ""
+          @tokens = []
+        end
       end
     end
 
@@ -154,6 +158,7 @@ module Vorth
             raise "string not closed" unless str =~ /[^\\]"/
             matching_quote_pos = (str =~ /[^\\]"/) + 1
             raw_token = raw_token[1..-1] + str[0...matching_quote_pos]
+            raw_token.gsub!('\\"', '"')
             str = str[(matching_quote_pos+1)..-1]
             type, value = :string, raw_token
           end
@@ -175,96 +180,129 @@ module Vorth
     end
 
     def parse_word(word)
-      if @mode != :string
-        word = word.downcase
-      end
+      case word
+      
+      # words
+      when :":"; @mode = :word_name
+      
+      # arithmetic
+      when :"+"; @stack.push(@stack.pop + @stack.pop)
+      when :"-"
+        a, b = @stack.pop, @stack.pop
+        @stack.push (b - a)
+      when :"*"; @stack.push(@stack.pop * @stack.pop)
+      when :"/"
+        a, b = @stack.pop, @stack.pop
+        @stack.push (b.to_f / a)
+      when :"//"
+        a, b = @stack.pop, @stack.pop
+        @stack.push (b / a).to_i
+      when :"%"
+        a, b = @stack.pop, @stack.pop
+        @stack.push (b % a)
 
-      case @mode
-      when :word_name
-        @temp_word = word
-        @words[word] = []
-        @mode = :word_contents
-      when :word_contents
-        if word == :";"
-          @mode = :normal
-          @temp_word = nil
-        else
-          @words[@temp_word].push word
+      # stack manipulation
+      when :swap
+        a, b = @stack.pop, @stack.pop
+        @stack.push a, b
+      when :dup; @stack.push @stack.peek_top
+      when :over; @stack.push @stack.peek(-2)
+      when :drop; @stack.pop
+      when :reverse; @stack = @stack.reverse
+
+      # stack values and conversion
+      when :chr
+        raise "incorrect argument type" unless @stack.peek_top.is_a? Token::ALLOWED_TYPES[:int]
+        @stack.push @stack.pop.chr
+      when :ord
+        raise "incorrect argument type" unless @stack.peek_top.is_a? Token::ALLOWED_TYPES[:string]
+        @stack.push @stack.pop.ord
+      when :type
+        @stack.push Token::ALLOWED_TYPES.key(@stack.pop.class).to_s
+
+      # output
+      when :"."; output @stack.pop
+      when :br; output "\n"
+      when :space; output " "
+      when :spaces; output " " * @stack.pop
+      when :".stack"; output @stack
+      when :".words"
+        output "["
+        words = @words.map do |word_name, word_contents|
+          tokens_string = word_contents.map { |t| t.value.to_s }.join(" ")
+          "<#{word_name}: #{tokens_string}>"
         end
-      when :normal
-        if @words.keys.include? word
-          @words[word].each { |w| parse_word(w) }
-        else
-          case word
+        output words.join(", ")
+        output "]"
+      when :".vars"; output @vars
 
-          # words
-          when :":"; @mode = :word_name
-          
-          # arithmetic
-          when :"+"; @stack.push(@stack.pop + @stack.pop)
-          when :"-"
-            a, b = @stack.pop, @stack.pop
-            @stack.push(b - a)
-          when :"*"; @stack.push(@stack.pop * @stack.pop)
-          when :"/"
-            a, b = @stack.pop, @stack.pop
-            @stack.push (b / a).to_i
-          when :"%"
-            a, b = @stack.pop, @stack.pop
-            @stack.push (b % a)
+      # flow control
+      when :bye; @vars[:EXIT] = 1
+      when :if; @vars[:SKIP] = (@stack.pop == 0 ? 1 : 0)
+      when "{".to_sym
+        level = 1
+        while level > 0
+          token = @tokens[@vars[:PC] += 1]
+          level += 1 if token.value == "{".to_sym
+          level -= 1 if token.value == "}".to_sym
 
-          # staack manipulation
-          when :swap
-            a, b = @stack.pop, @stack.pop
-            @stack.push a, b
-          when :dup; @stack.push @stack.peek_top
-          when :over; @stack.push @stack.peek(-2)
-          when :drop; @stack.pop
-          when :reverse; @stack = @stack.reverse
-
-          # output
-          when :"."; output @stack.pop
-          when :cr; puts
-          when :space; output " "
-          when :spaces; output " " * @stack.pop
-          when :emit; output @stack.pop.chr
-          when :".stack"; output @stack
-          when :".words"; output @words
-          when :".vars"; output @vars
-          else
-            raise "can't find word \"#{word.to_s}\""
-          end
+          break if level == 0
+          parse_token token unless @vars[:SKIP] == 1
         end
+        @vars[:PC] += 1
+      when "}".to_sym
+        raise 'found "}" without matching "{"'
+
+      else
+        raise "can't find word \"#{word.to_s}\""
       end
     end
 
-    def parse_words_arr(words_arr)
-      words_arr
-        .map(&:to_sym)
-        .each { |word|
-          if @exit_on_error && !@error.empty
-            break
+    def parse_token(token)
+      if [:int, :float, :string].include? token.type
+        @stack.push token.value
+      elsif token.type == :word
+        if token.value == :":"
+          word_name = @tokens[@vars[:PC] += 1].value
+          @words[word_name] = []
+
+          while @tokens[@vars[:PC] += 1].value != :";"
+            @words[word_name] << @tokens[@vars[:PC]]
           end
-          
-          parse_word(word)
-        }
+        else
+          parse_word token.value
+        end
+      else
+        raise "invalid token type"
+      end
     end
 
     def run
       @vars[:PC] = 0
-      should_exit = false
 
-      while !should_exit && @vars[:PC] < @tokens.length
+      while @vars[:EXIT] == 0 && @vars[:PC] < @tokens.length
         token = @tokens[@vars[:PC]]
 
-        if [:int, :float, :string].include? token.type
-          @stack.push token.value
+        if @words.keys.include? token.value
+          @words[token.value].each { |t| parse_token t }
         else
-          parse_word token.value
+          parse_token token
         end
-
+        
         @vars[:PC] += 1
       end
     end
+  end
+end
+
+if __FILE__ == $0
+  if ARGV.length == 1
+    file = File.open(ARGV[0])
+    Vorth::Vorth.new.call(file.read)
+    file.close
+  elsif ARGV.length == 0
+    Vorth::Vorth.new.call
+  else
+    puts "Usage: vorth [file]"
   end
 end
