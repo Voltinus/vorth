@@ -2,4 +2,6 @@
 
 require_relative "vorth"
 
-Vorth.new.call
+# Vorth::Vorth.new(debug: true).call
+
+Vorth::Vorth.new.call
