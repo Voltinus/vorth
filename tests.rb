@@ -208,6 +208,14 @@ describe Vorth::Vorth do
       it("exits the program unconditionally") { assert_equal "#{n3}#{n2}", @v.parse("#{n1} #{n2} #{n3} . . bye .") }
     end
 
+    describe "comparison" do
+      describe "equals" do
+        it("works with at least two elements on stack") { assert_equal "1", @v.parse("#{n1} dup = .") }
+        it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} =" }
+        it("doesn't work with no elements on stack") { assert_error "stack underflow", "=" }
+      end
+    end
+
     describe "if" do
       it("doesn't work with no elements on stack") { assert_error "stack underflow", "if" }
 
@@ -218,7 +226,21 @@ describe Vorth::Vorth do
 
       describe "when value is falsy" do
         it("doesn't run single command") { assert_equal "0", @v.parse("#{n1} 0 if . 0 .") }
-        it("doesn't run block") { assert_equal "0", @v.parse("#{n1} #{n2} #{n3} 1 if { . . . } 0 .") }
+        it("doesn't run block") { assert_equal "0", @v.parse("#{n1} #{n2} #{n3} 0 if { . . . } 0 .") }
+      end
+    end
+
+    describe "else" do
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", "else" }
+
+      describe 'when previous "if" value was truthy' do
+        it("doesn't run single command") { assert_equal "[#{n1}]", @v.parse("1 if #{n1} else #{n2} .stack") }
+        it("doesn't runs block") { assert_equal "[#{n1}]", @v.parse("1 if { #{n1} } else { #{n2} } .stack") }
+      end
+
+      describe 'when previous "if" value was falsy' do
+        it("runs single command") { assert_equal "[#{n2}]", @v.parse("0 if #{n1} else #{n2} .stack") }
+        it("runs block") { assert_equal "[#{n2}]", @v.parse("0 if { #{n1} } else { #{n2} } .stack") }
       end
     end
   end

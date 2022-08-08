@@ -82,7 +82,7 @@ module Vorth
     end
 
     def reverse
-      @arr.reverse
+      @arr = @arr.reverse
     end
   end
 
@@ -94,9 +94,10 @@ module Vorth
       @stack = Stack.new
       @words = {}
       @vars = {
-        PC: 0,    # program counter (index of current instruction in @tokens)
-        EXIT: 0,  # if 1 terminate the execution
-        SKIP: 0,  # if 1 skip next instruction (or whole block)
+        PC: 0,      # program counter (index of current instruction in @tokens)
+        EXIT: 0,    # if 1 terminate the execution
+        SKIP: 0,    # if 1 skip next instruction (or whole block)
+        LAST_IF: 0, # last value checked by "if" instruction
       }
 
       @buffer = ""
@@ -116,6 +117,8 @@ module Vorth
     end
 
     def parse(str)
+      str.gsub!(/#.*$/, "")
+
       tokenize(str)
       run
 
@@ -180,8 +183,22 @@ module Vorth
     end
 
     def parse_word(word)
+      if word == "{".to_sym
+        level = 1
+        while level > 0
+          token = @tokens[@vars[:PC] += 1]
+          level += 1 if token.value == "{".to_sym
+          level -= 1 if token.value == "}".to_sym
+
+          break if level == 0
+          parse_token token if @vars[:SKIP] == 0
+        end
+        return
+      end
+
+      return if @vars[:SKIP] != 0
+
       case word
-      
       # words
       when :":"; @mode = :word_name
       
@@ -208,7 +225,7 @@ module Vorth
       when :dup; @stack.push @stack.peek_top
       when :over; @stack.push @stack.peek(-2)
       when :drop; @stack.pop
-      when :reverse; @stack = @stack.reverse
+      when :reverse; @stack.reverse
 
       # stack values and conversion
       when :chr
@@ -238,18 +255,26 @@ module Vorth
 
       # flow control
       when :bye; @vars[:EXIT] = 1
-      when :if; @vars[:SKIP] = (@stack.pop == 0 ? 1 : 0)
-      when "{".to_sym
-        level = 1
-        while level > 0
-          token = @tokens[@vars[:PC] += 1]
-          level += 1 if token.value == "{".to_sym
-          level -= 1 if token.value == "}".to_sym
-
-          break if level == 0
-          parse_token token unless @vars[:SKIP] == 1
-        end
-        @vars[:PC] += 1
+      when :"="; @stack.push(@stack.pop == @stack.pop ? 1 : 0)
+      when :"!="; @stack.push(@stack.pop != @stack.pop ? 1 : 0)
+      when :">"
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b > a ? 1 : 0)
+      when :">="
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b >= a ? 1 : 0)
+      when :"<"
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b < a ? 1 : 0)
+      when :"<="
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b <= a ? 1 : 0)
+      when :if
+        value = @stack.pop
+        @vars[:SKIP] = (value == 0 ? 2 : 0)
+        @vars[:LAST_IF] = (value == 0 ? 0 : 1)
+      when :else
+        @vars[:SKIP] = (@vars[:LAST_IF] == 1 ? 2 : 0)
       when "}".to_sym
         raise 'found "}" without matching "{"'
 
@@ -289,6 +314,7 @@ module Vorth
           parse_token token
         end
         
+        @vars[:SKIP] -= 1 if @vars[:SKIP] > 0
         @vars[:PC] += 1
       end
     end

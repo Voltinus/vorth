@@ -1,0 +1,3 @@
+#!../vorth.rb
+
+"Hello, world!" . br
