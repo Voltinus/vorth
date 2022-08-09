@@ -101,7 +101,7 @@ module Vorth
       elsif second.type == :string
         raise "can't divide by string"
       else
-        @value.to_f / second.value
+        @value / second.value
       end
     end
 
@@ -134,8 +134,12 @@ module Vorth
       @arr.to_s
     end
 
-    def push(*args)
-      @arr.push *args
+    def push(value)
+      if value.is_a? Value
+        @arr.push value
+      else
+        @arr.push Value.new(value)
+      end
     end
 
     def pop    
@@ -167,10 +171,11 @@ module Vorth
       @stack = Stack.new
       @words = {}
       @vars = {
-        PC: 0,      # program counter (index of current instruction in @tokens)
-        EXIT: 0,    # if 1 terminate the execution
-        SKIP: 0,    # if 1 skip next instruction (or whole block)
-        LAST_IF: 0, # last value checked by "if" instruction
+        PC: 0,       # program counter (index of current instruction in @tokens)
+        EXIT: 0,     # if 1 terminate the execution
+        SKIP: 0,     # skip that many words/blocks
+        LAST_IF: 0,  # last value checked by "if" instruction
+        REPEAT: 1,   # how many times repeat next word/block
       }
 
       @buffer = ""
@@ -256,21 +261,6 @@ module Vorth
     end
 
     def parse_word(word)
-      if word == "{".to_sym
-        level = 1
-        while level > 0
-          token = @tokens[@vars[:PC] += 1]
-          level += 1 if token.value == "{".to_sym
-          level -= 1 if token.value == "}".to_sym
-
-          break if level == 0
-          parse_token token if @vars[:SKIP] == 0
-        end
-        return
-      end
-
-      return if @vars[:SKIP] != 0
-
       case word
       
       # arithmetic
@@ -283,8 +273,8 @@ module Vorth
         a, b = @stack.pop, @stack.pop
         @stack.push (b / a)
       when :"//"
-        a, b = @stack.pop, @stack.pop
-        @stack.push (b / a).to_i
+        a, b = @stack.pop.value.to_i, @stack.pop.value.to_i
+        @stack.push (b / a)
       when :"%"
         a, b = @stack.pop, @stack.pop
         @stack.push (b % a)
@@ -308,7 +298,8 @@ module Vorth
       # stack manipulation
       when :swap
         a, b = @stack.pop, @stack.pop
-        @stack.push a, b
+        @stack.push a
+        @stack.push b
       when :dup; @stack.push @stack.peek_top
       when :over; @stack.push @stack.peek(-2)
       when :drop; @stack.pop
@@ -316,19 +307,21 @@ module Vorth
 
       # stack values and conversion
       when :chr
-        raise "incorrect argument type" unless @stack.peek_top.is_a? Token::ALLOWED_TYPES[:int]
-        @stack.push @stack.pop.chr
+        raise "incorrect argument type" unless @stack.peek_top.type == :int
+        @stack.push @stack.pop.value.chr
       when :ord
-        raise "incorrect argument type" unless @stack.peek_top.is_a? Token::ALLOWED_TYPES[:string]
-        @stack.push @stack.pop.ord
+        raise "incorrect argument type" unless @stack.peek_top.type == :string
+        @stack.push @stack.pop.value.ord
       when :type
-        @stack.push Token::ALLOWED_TYPES.key(@stack.pop.class).to_s
+        @stack.push @stack.pop.type.to_s
 
       # output
       when :"."; output @stack.pop
       when :br; output "\n"
       when :space; output " "
-      when :spaces; output " " * @stack.pop
+      when :spaces
+        raise "expected int argument" unless @stack.peek_top.type == :int
+        output " " * @stack.pop.value
       when :".stack"; output @stack
       when :".words"
         output "["
@@ -343,11 +336,13 @@ module Vorth
       # flow control
       when :bye; @vars[:EXIT] = 1
       when :if
-        value = @stack.pop
-        @vars[:SKIP] = (value == 0 ? 2 : 0)
-        @vars[:LAST_IF] = (value == 0 ? 0 : 1)
+        value_truthy = @stack.pop.truthy?
+        @vars[:SKIP] = (value_truthy ? 0 : 2)
+        @vars[:LAST_IF] = (value_truthy ? 1 : 0)
       when :else
         @vars[:SKIP] = (@vars[:LAST_IF] == 1 ? 2 : 0)
+      when :times
+        @vars[:REPEAT] = @stack.pop.value.to_i
       when "}".to_sym
         raise 'found "}" without matching "{"'
 
@@ -379,12 +374,33 @@ module Vorth
       @vars[:PC] = 0
 
       while @vars[:EXIT] == 0 && @vars[:PC] < @tokens.length
-        token = @tokens[@vars[:PC]]
+        current_pc = @vars[:PC]
+        repeat = @vars[:REPEAT]
+        @vars[:REPEAT] = 1
 
-        if @words.keys.include? token.value
-          @words[token.value].each { |t| parse_token t }
-        else
-          parse_token token
+        repeat.times do
+          @vars[:PC] = current_pc
+          token = @tokens[@vars[:PC]]
+
+          if token.value == "{".to_sym
+            level = 1
+            while level > 0
+              token = @tokens[@vars[:PC] += 1]
+              level += 1 if token.value == "{".to_sym
+              level -= 1 if token.value == "}".to_sym
+    
+              break if level == 0
+              parse_token token if @vars[:SKIP] == 0
+            end
+          else
+            if @vars[:SKIP] == 0
+              if @words.keys.include? token.value
+                @words[token.value].each { |t| parse_token t }
+              else
+                parse_token token
+              end
+            end
+          end
         end
         
         @vars[:SKIP] -= 1 if @vars[:SKIP] > 0

@@ -1,7 +1,2 @@
 #!../vorth.rb
 
-1 2 = if {
-  "what" . br
-} else {
-  "alright" . br
-}

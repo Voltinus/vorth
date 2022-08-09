@@ -96,13 +96,13 @@ describe Vorth::Vorth do
     end
     
     describe "floating point division" do
-      it("works with at least two elements on stack") { assert_equal "#{(n1.to_f/n2)}", @v.parse("#{n1} #{n2} / .") }
+      it("works with at least two elements on stack") { assert_equal "#{(n1.to_f/n2)}", @v.parse("#{n1}.0 #{n2} / .") }
       it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} /" }
       it("doesn't work with no elements on stack") { assert_error "stack underflow", "/" }
     end
     
     describe "integer division" do
-      it("works with at least two elements on stack") { assert_equal "#{(n1/n2).to_i}", @v.parse("#{n1} #{n2} // .") }
+      it("works with at least two elements on stack") { assert_equal "#{(n1/n2)}", @v.parse("#{n1} #{n2} // .") }
       it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} //" }
       it("doesn't work with no elements on stack") { assert_error "stack underflow", "//" }
     end
@@ -283,26 +283,35 @@ describe Vorth::Vorth do
       it("doesn't work with no elements on stack") { assert_error "stack underflow", "if" }
 
       describe "when value is truthy" do
-        it("runs single command") { assert_equal "#{n1}", @v.parse("#{n1} 1 if .") }
+        it("runs single word") { assert_equal "#{n1}", @v.parse("#{n1} 1 if .") }
         it("runs block") { assert_equal "#{n3}#{n2}#{n1}", @v.parse("#{n1} #{n2} #{n3} 1 if { . . . }") }
       end
 
       describe "when value is falsy" do
-        it("doesn't run single command") { assert_equal "0", @v.parse("#{n1} 0 if . 0 .") }
+        it("doesn't run single word") { assert_equal "0", @v.parse("#{n1} 0 if . 0 .") }
         it("doesn't run block") { assert_equal "0", @v.parse("#{n1} #{n2} #{n3} 0 if { . . . } 0 .") }
       end
     end
 
     describe "else" do
       describe 'when previous "if" value was truthy' do
-        it("doesn't run single command") { assert_equal "[#{n1}]", @v.parse("1 if #{n1} else #{n2} .stack") }
+        it("doesn't run single word") { assert_equal "[#{n1}]", @v.parse("1 if #{n1} else #{n2} .stack") }
         it("doesn't runs block") { assert_equal "[#{n1}]", @v.parse("1 if { #{n1} } else { #{n2} } .stack") }
       end
 
       describe 'when previous "if" value was falsy' do
-        it("runs single command") { assert_equal "[#{n2}]", @v.parse("0 if #{n1} else #{n2} .stack") }
+        it("runs single word") { assert_equal "[#{n2}]", @v.parse("0 if #{n1} else #{n2} .stack") }
         it("runs block") { assert_equal "[#{n2}]", @v.parse("0 if { #{n1} } else { #{n2} } .stack") }
       end
+    end
+
+    describe "times" do
+      describe "runs next word specified number of times" do
+        it("runs single word") { assert_equal "123", @v.parse("3 2 1 3 times .") }
+        it("runs block") { assert_equal "123", @v.parse("3 2 1 3 times { . }") }
+      end
+      
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", "times" }
     end
   end
 end
