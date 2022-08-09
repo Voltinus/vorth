@@ -5,6 +5,8 @@ require "minitest/autorun"
 
 
 describe Vorth::Vorth do
+  parallelize_me!
+
   before do
     @v = Vorth::Vorth.new(stdout_print: false)
   end
@@ -112,6 +114,75 @@ describe Vorth::Vorth do
     end
   end
 
+  describe "comparison" do
+    n1 = rand(-100..-1)
+    n2 = rand(1..100)
+
+    describe "equals" do
+      describe "works with at least two elements on stack" do
+        it("returns 1") { assert_equal "1", @v.parse("#{n1} dup = .") }
+        it("returns 0") { assert_equal "0", @v.parse("#{n1} #{n2} = .") }
+      end
+      
+      it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} =" }
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", "=" }
+    end
+
+    describe "not equals" do
+      describe "works with at least two elements on stack" do
+        it("returns 1") { assert_equal "1", @v.parse("#{n1} #{n2} != .") }
+        it("returns 0") { assert_equal "0", @v.parse("#{n1} dup != .") }
+      end
+
+      it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} !=" }
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", "!=" }
+    end
+
+    describe "greater" do
+      describe "works with at least two elements on stack" do
+        it("returns 1") { assert_equal "1", @v.parse("#{n2} #{n1} > .") }
+        it("returns 0 when greater") { assert_equal "0", @v.parse("#{n1} #{n2} > .") }
+        it("returns 0 when equal") { assert_equal "0", @v.parse("#{n1} dup > .") }
+      end
+
+      it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} >" }
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", ">" }
+    end
+
+    describe "greater or equal" do
+      describe "works with at least two elements on stack" do
+        it("returns 1 when greater") { assert_equal "1", @v.parse("#{n2} #{n1} >= .") }
+        it("returns 1 when equal") { assert_equal "1", @v.parse("#{n2} dup >= .") }
+        it("returns 0") { assert_equal "0", @v.parse("#{n1} #{n2} >= .") }
+      end
+
+      it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} >=" }
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", ">=" }
+    end
+
+    describe "less" do
+      describe "works with at least two elements on stack" do
+        it("returns 1") { assert_equal "1", @v.parse("#{n1} #{n2} < .") }
+        it("returns 0 when less") { assert_equal "0", @v.parse("#{n2} #{n1} < .") }
+        it("returns 0 when equal") { assert_equal "0", @v.parse("#{n2} #{n1} < .") }
+      end
+
+      it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} <" }
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", "<" }
+    end
+
+    describe "less or equal" do
+      describe "works with at least two elements on stack" do
+        it("returns 1 when less") { assert_equal "1", @v.parse("#{n1} #{n2} <= .") }
+        it("returns 1 when equal") { assert_equal "1", @v.parse("#{n2} dup <= .") }
+        it("returns 0") { assert_equal "0", @v.parse("#{n2} #{n1} <= .") }
+      end
+
+      it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} <=" }
+      it("doesn't work with no elements on stack") { assert_error "stack underflow", "<=" }
+    end
+  end
+
   describe "stack manipulation" do
     n1 = rand(-100..100)
     n2 = rand(-100..100)
@@ -208,14 +279,6 @@ describe Vorth::Vorth do
       it("exits the program unconditionally") { assert_equal "#{n3}#{n2}", @v.parse("#{n1} #{n2} #{n3} . . bye .") }
     end
 
-    describe "comparison" do
-      describe "equals" do
-        it("works with at least two elements on stack") { assert_equal "1", @v.parse("#{n1} dup = .") }
-        it("doesn't work with one element on stack") { assert_error "stack underflow", "#{n1} =" }
-        it("doesn't work with no elements on stack") { assert_error "stack underflow", "=" }
-      end
-    end
-
     describe "if" do
       it("doesn't work with no elements on stack") { assert_error "stack underflow", "if" }
 
@@ -231,8 +294,6 @@ describe Vorth::Vorth do
     end
 
     describe "else" do
-      it("doesn't work with no elements on stack") { assert_error "stack underflow", "else" }
-
       describe 'when previous "if" value was truthy' do
         it("doesn't run single command") { assert_equal "[#{n1}]", @v.parse("1 if #{n1} else #{n2} .stack") }
         it("doesn't runs block") { assert_equal "[#{n1}]", @v.parse("1 if { #{n1} } else { #{n2} } .stack") }

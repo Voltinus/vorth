@@ -23,31 +23,104 @@ module Vorth
     def to_s
       "<#{@type}:#{@value}>"
     end
+  end
 
-    def word?
-      @type == :word
+  class Value
+    attr_accessor :value
+
+    ALLOWED_TYPES = {
+      int: Integer,
+      float: Float,
+      string: String,
+    }
+
+    def initialize(value)
+      unless ALLOWED_TYPES.values.include? value.class
+        raise "incorrect value type"
+      end
+
+      @value = value
     end
 
-    def int?
-      @type == :int
+    def to_s
+      @value.to_s
     end
 
-    def float?
-      @type == :float
+    def inspect
+      @value.inspect
     end
 
-    def string?
-      @type == :string
+    def type
+      ALLOWED_TYPES.key(@value.class)
+    end
+
+    def ==(second); @value == second.value end
+    def !=(second); @value != second.value end
+    def <(second);  @value < second.value end
+    def >(second);  @value > second.value end
+    def <=(second); @value <= second.value end
+    def >=(second); @value >= second.value end
+
+    def +(second)
+      if type == :string || second.type == :string
+        "#{@value.to_s}#{second.value.to_s}"
+      else
+        @value + second.value
+      end
+    end
+
+    def -(second)
+      if type == :string
+        @value.gsub(second.value.to_s, "")
+      elsif second.type == :string
+        raise "cant subtract string from number"
+      else
+        @value - second.value
+      end
+    end
+
+    def *(second)
+      if type == :string || second.type == :string
+        if type == :int || second.type == :int
+          @value * second.value
+        else
+          raise "string can only be multiplied by int"
+        end
+      else
+        @value * second.value
+      end
+    end
+
+    def /(second)
+      if type == :string
+        if second.type == :int
+          @value.scan /.{1,#{second.value}}/
+        else
+          raise "string can only by divided by int"
+        end
+      elsif second.type == :string
+        raise "can't divide by string"
+      else
+        @value.to_f / second.value
+      end
+    end
+
+    def %(second)
+      if type == :int && second.type == :int
+        @value % second.value
+      else
+        raise "modulo can only be aplied to ints"
+      end
     end
 
     def truthy?
-      case @type
+      case type
       when :int, :float
         @value != 0
       when :string
         @value.length != 0
       else
-        raise "can't check truthiness of #{@type.to_s}"
+        raise "can't check truthiness of #{type}"
       end
     end
   end
@@ -199,8 +272,6 @@ module Vorth
       return if @vars[:SKIP] != 0
 
       case word
-      # words
-      when :":"; @mode = :word_name
       
       # arithmetic
       when :"+"; @stack.push(@stack.pop + @stack.pop)
@@ -210,13 +281,29 @@ module Vorth
       when :"*"; @stack.push(@stack.pop * @stack.pop)
       when :"/"
         a, b = @stack.pop, @stack.pop
-        @stack.push (b.to_f / a)
+        @stack.push (b / a)
       when :"//"
         a, b = @stack.pop, @stack.pop
         @stack.push (b / a).to_i
       when :"%"
         a, b = @stack.pop, @stack.pop
         @stack.push (b % a)
+
+      # comparison
+      when :"="; @stack.push(@stack.pop == @stack.pop ? 1 : 0)
+      when :"!="; @stack.push(@stack.pop != @stack.pop ? 1 : 0)
+      when :">"
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b > a ? 1 : 0)
+      when :">="
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b >= a ? 1 : 0)
+      when :"<"
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b < a ? 1 : 0)
+      when :"<="
+        a, b = @stack.pop, @stack.pop
+        @stack.push(b <= a ? 1 : 0)
 
       # stack manipulation
       when :swap
@@ -255,20 +342,6 @@ module Vorth
 
       # flow control
       when :bye; @vars[:EXIT] = 1
-      when :"="; @stack.push(@stack.pop == @stack.pop ? 1 : 0)
-      when :"!="; @stack.push(@stack.pop != @stack.pop ? 1 : 0)
-      when :">"
-        a, b = @stack.pop, @stack.pop
-        @stack.push(b > a ? 1 : 0)
-      when :">="
-        a, b = @stack.pop, @stack.pop
-        @stack.push(b >= a ? 1 : 0)
-      when :"<"
-        a, b = @stack.pop, @stack.pop
-        @stack.push(b < a ? 1 : 0)
-      when :"<="
-        a, b = @stack.pop, @stack.pop
-        @stack.push(b <= a ? 1 : 0)
       when :if
         value = @stack.pop
         @vars[:SKIP] = (value == 0 ? 2 : 0)
@@ -285,7 +358,7 @@ module Vorth
 
     def parse_token(token)
       if [:int, :float, :string].include? token.type
-        @stack.push token.value
+        @stack.push Value.new(token.value)
       elsif token.type == :word
         if token.value == :":"
           word_name = @tokens[@vars[:PC] += 1].value
