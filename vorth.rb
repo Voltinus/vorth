@@ -9,6 +9,7 @@ module Vorth
       int: Integer,
       float: Float,
       string: String,
+      block: Array,
     }
 
     def initialize(type, value)
@@ -22,6 +23,10 @@ module Vorth
 
     def to_s
       "<#{@type}:#{@value}>"
+    end
+
+    def inspect
+      to_s
     end
   end
 
@@ -197,7 +202,7 @@ module Vorth
     def parse(str)
       str.gsub!(/#.*$/, "")
 
-      tokenize(str)
+      @tokens = tokenize(str)
       run
 
       if @debug
@@ -212,6 +217,8 @@ module Vorth
     end
 
     def tokenize(str)
+      tokens = []
+
       while str.length > 0
         str = str.strip
         whitespace_pos = str =~ /\s/
@@ -243,14 +250,26 @@ module Vorth
             str = str[(matching_quote_pos+1)..-1]
             type, value = :string, raw_token
           end
+        elsif raw_token == "{"
+          raise "block not closed" unless str =~ /}/
+          matching_bracket_pos = 0
+          level = 1
+          str.split("").each { |char|
+            level += 1 if char == "{"
+            level -= 1 if char == "}"
+            break if level == 0
+            matching_bracket_pos += 1
+          }
+          raw_token, str = str[0...matching_bracket_pos], str[matching_bracket_pos+1..-1]
+          type, value = :block, tokenize(raw_token)
         else
           type, value = :word, raw_token.to_sym
         end
 
-        @tokens << Token.new(type, value)
+        tokens << Token.new(type, value)
       end
 
-      return @tokens
+      return tokens
     end
     
     private
@@ -365,6 +384,8 @@ module Vorth
         else
           parse_word token.value
         end
+      elsif token.type == :block
+        token.value.each { |token| parse_token(token) }
       else
         raise "invalid token type"
       end
@@ -374,33 +395,19 @@ module Vorth
       @vars[:PC] = 0
 
       while @vars[:EXIT] == 0 && @vars[:PC] < @tokens.length
-        current_pc = @vars[:PC]
-        repeat = @vars[:REPEAT]
-        @vars[:REPEAT] = 1
+        token = @tokens[@vars[:PC]]
+        
+        # ???
+        # @vars[:REPEAT] = 1
 
-        repeat.times do
-          @vars[:PC] = current_pc
-          token = @tokens[@vars[:PC]]
-
-          if token.value == "{".to_sym
-            level = 1
-            while level > 0
-              token = @tokens[@vars[:PC] += 1]
-              level += 1 if token.value == "{".to_sym
-              level -= 1 if token.value == "}".to_sym
-    
-              break if level == 0
-              parse_token token if @vars[:SKIP] == 0
+        if @vars[:SKIP] == 0
+          @vars[:REPEAT].times {
+            if @words.keys.include? token.value
+              @words[token.value].each { |t| parse_token t }
+            else
+              parse_token token
             end
-          else
-            if @vars[:SKIP] == 0
-              if @words.keys.include? token.value
-                @words[token.value].each { |t| parse_token t }
-              else
-                parse_token token
-              end
-            end
-          end
+          }
         end
         
         @vars[:SKIP] -= 1 if @vars[:SKIP] > 0

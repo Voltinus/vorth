@@ -16,6 +16,22 @@ describe Vorth::Vorth do
     assert_match Regexp.new(error_expected), error.message
   end
 
+  describe "tokenization" do
+    it("works for basic values") { assert_equal "[<int:0>, <float:0.0>, <string:000>, <word:.>]", @v.tokenize('0 0.0 "000" .').to_s }
+    it("works for blocks") {
+      assert_equal(
+        "[<int:2>, <int:1>, <word:=>, <word:if>, <block:[<string:what>]>, <word:else>, <block:[<string:alright>]>, <word:.>]",
+        @v.tokenize('2 1 = if { "what" } else { "alright" } .').to_s
+      )
+    }
+    it("works for nested blocks") {
+      assert_equal(
+        "[<int:2>, <int:2>, <word:=>, <word:if>, <block:[<int:3>, <word:times>, <block:[<int:123>, <word:.>, <word:br>]>]>]",
+        @v.tokenize("2 2 = if { 3 times { 123 . br } }" ).to_s
+      )
+    }
+  end
+
   describe "putting values on stack" do
     describe "numbers" do
       n = rand(1..100)
