@@ -26,10 +26,16 @@ describe Vorth::Vorth do
     }
     it("works for nested blocks") {
       assert_equal(
-        "[<int:2>, <int:2>, <word:=>, <word:if>, <block:[<int:3>, <word:times>, <block:[<int:123>, <word:.>, <word:br>]>]>]",
-        @v.tokenize("2 2 = if { 3 times { 123 . br } }" ).to_s
+        "[<int:2>, <word:dup>, <word:=>, <word:if>, <block:[<int:3>, <word:times>, <block:[<int:123>, <word:.>, <word:br>]>]>]",
+        @v.tokenize("2 dup = if { 3 times { 123 . br } }" ).to_s
       )
     }
+  end
+
+  describe "blocks" do
+    it("runs regular blocks") { assert_equal("123", @v.parse("{ 1 2 3 } reverse . . .")) }
+    it("runs nested blocks") { assert_equal("1221", @v.parse("{ 1 { 2 2 } 1 } 4 times .")) }
+    it("runs nested blocks with times") { assert_equal("9", @v.parse("0 3 times { 3 times { 1 + } } .")) }
   end
 
   describe "putting values on stack" do

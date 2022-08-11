@@ -371,6 +371,8 @@ module Vorth
     end
 
     def parse_token(token)
+      puts "#{token} #{@vars}"
+
       if @words.keys.include? token.value
         @words[token.value].each { |t| parse_token t }
       else
@@ -405,8 +407,12 @@ module Vorth
         # @vars[:REPEAT] = 1
 
         if @vars[:SKIP] == 0
-          @vars[:REPEAT].times do
-            parse_token token
+          repeat = @vars[:REPEAT]
+          if repeat > 1
+            repeat.times { parse_token token }
+            @vars[:REPEAT] = 1
+          else
+            repeat.times { parse_token token }
           end
         end
         
