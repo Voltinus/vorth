@@ -371,23 +371,27 @@ module Vorth
     end
 
     def parse_token(token)
-      if [:int, :float, :string].include? token.type
-        @stack.push Value.new(token.value)
-      elsif token.type == :word
-        if token.value == :":"
-          word_name = @tokens[@vars[:PC] += 1].value
-          @words[word_name] = []
-
-          while @tokens[@vars[:PC] += 1].value != :";"
-            @words[word_name] << @tokens[@vars[:PC]]
-          end
-        else
-          parse_word token.value
-        end
-      elsif token.type == :block
-        token.value.each { |token| parse_token(token) }
+      if @words.keys.include? token.value
+        @words[token.value].each { |t| parse_token t }
       else
-        raise "invalid token type"
+        if [:int, :float, :string].include? token.type
+          @stack.push Value.new(token.value)
+        elsif token.type == :word
+          if token.value == :":"
+            word_name = @tokens[@vars[:PC] += 1].value
+            @words[word_name] = []
+  
+            while @tokens[@vars[:PC] += 1].value != :";"
+              @words[word_name] << @tokens[@vars[:PC]]
+            end
+          else
+            parse_word token.value
+          end
+        elsif token.type == :block
+          token.value.each { |token| parse_token(token) }
+        else
+          raise "invalid token type"
+        end
       end
     end
 
@@ -401,13 +405,9 @@ module Vorth
         # @vars[:REPEAT] = 1
 
         if @vars[:SKIP] == 0
-          @vars[:REPEAT].times {
-            if @words.keys.include? token.value
-              @words[token.value].each { |t| parse_token t }
-            else
-              parse_token token
-            end
-          }
+          @vars[:REPEAT].times do
+            parse_token token
+          end
         end
         
         @vars[:SKIP] -= 1 if @vars[:SKIP] > 0
